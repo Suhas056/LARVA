@@ -122,7 +122,9 @@ def wait_for_wake_word() -> bool:
         print(f"\nWake-word or microphone error: {error}")
         return False
 
-def listen_for_command() -> str:
+def listen_for_command(
+    start_timeout_seconds: float = START_TIMEOUT_SECONDS,
+) -> Optional[str]:
     chunk_frames = int(SAMPLE_RATE * CHUNK_SECONDS)
     silence_chunks_needed = int(END_SILENCE_SECONDS / CHUNK_SECONDS)
 
@@ -144,9 +146,9 @@ def listen_for_command() -> str:
             while True:
                 now = time.monotonic()
                 if speech_started_at is None:
-                    if now - wait_started_at >= START_TIMEOUT_SECONDS:
-                        print("No speech detected. Try again.")
-                        return ""
+                    if now - wait_started_at >= start_timeout_seconds:
+                        print("No speech detected before the listening timeout.")
+                        return None
                 elif now - speech_started_at >= MAX_SPEECH_SECONDS:
                     break
 

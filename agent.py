@@ -3,7 +3,7 @@ import argparse
 from ollama import chat
 
 from app_launcher import APP_PATHS, detect_open_command, open_application
-from config import MODEL
+from config import CONVERSATION_IDLE_TIMEOUT_SECONDS, MODEL
 from speech_output import speak
 from system_tools import detect_screenshot_command, take_screenshot
 from voice import listen_for_command, wait_for_wake_word
@@ -42,6 +42,99 @@ If the tool cannot find an application, explain that honestly.
 ]
 
 
+def process_command(user_input: str) -> bool:
+    """Handle one command; return False when the user requests exit."""
+    if user_input.lower() == "exit":
+        print("LARVA: Goodbye.")
+        return False
+
+    screenshot_requested = detect_screenshot_command(user_input)
+    if screenshot_requested:
+        result = take_screenshot()
+        print(f"\n[Result: {result}]\n")
+        speak(result)
+        chat_history.append({
+            "role": "user",
+            "content": user_input,
+        })
+        chat_history.append({
+            "role": "assistant",
+            "content": result,
+        })
+        return True
+
+    detected_app = detect_open_command(user_input)
+    if detected_app:
+        print(f"\n[LARVA detected an app request: {detected_app}]")
+        result = open_application(detected_app)
+        print(f"[Result: {result}]\n")
+        speak(result)
+
+        chat_history.append({
+            "role": "user",
+            "content": user_input,
+        })
+        chat_history.append({
+            "role": "assistant",
+            "content": result,
+        })
+        return True
+
+    chat_history.append({
+        "role": "user",
+        "content": user_input,
+    })
+
+    try:
+        while True:
+            response = chat(
+                model=MODEL,
+                messages=chat_history,
+                tools=tools,
+            )
+            chat_history.append(response.message)
+
+            if response.message.tool_calls:
+                for tool_call in response.message.tool_calls:
+                    function_name = tool_call.function.name
+                    arguments = tool_call.function.arguments
+
+                    print(f"\n[Tool: {function_name}]")
+                    print(f"[Arguments: {arguments}]")
+
+                    if (
+                        function_name == "take_screenshot"
+                        and not screenshot_requested
+                    ):
+                        result = (
+                            "Screenshot not taken. Only explicit "
+                            "screenshot requests can trigger a capture."
+                        )
+                    elif function_name in available_functions:
+                        function_to_call = available_functions[function_name]
+                        result = function_to_call(**arguments)
+                    else:
+                        result = "Unknown tool."
+
+                    print(f"[Result: {result}]\n")
+                    chat_history.append({
+                        "role": "tool",
+                        "tool_name": function_name,
+                        "content": str(result),
+                    })
+
+                continue
+
+            print(f"LARVA: {response.message.content}\n")
+            speak(response.message.content)
+            break
+
+    except Exception as error:
+        print(f"\nError: {error}\n")
+
+    return True
+
+
 def main(text_mode: bool = False) -> None:
     print("================================")
     print("          LARVA ONLINE")
@@ -55,102 +148,38 @@ def main(text_mode: bool = False) -> None:
     while True:
         if text_mode:
             user_input = input("You: ").strip()
-        else:
-            if not wait_for_wake_word():
+            if not user_input:
+                continue
+            if not process_command(user_input):
                 break
-            print("LARVA: Please speak a command.")
-            user_input = listen_for_command()
-
-        if not user_input:
             continue
 
-        if user_input.lower() == "exit":
-            print("LARVA: Goodbye.")
+        if not wait_for_wake_word():
             break
 
-        screenshot_requested = detect_screenshot_command(user_input)
-        if screenshot_requested:
-            result = take_screenshot()
-            print(f"\n[Result: {result}]\n")
-            speak(result)
-            chat_history.append({
-                "role": "user",
-                "content": user_input,
-            })
-            chat_history.append({
-                "role": "assistant",
-                "content": result,
-            })
-            continue
-
-        detected_app = detect_open_command(user_input)
-        if detected_app:
-            print(f"\n[LARVA detected an app request: {detected_app}]")
-            result = open_application(detected_app)
-            print(f"[Result: {result}]\n")
-            speak(result)
-
-            chat_history.append({
-                "role": "user",
-                "content": user_input,
-            })
-            chat_history.append({
-                "role": "assistant",
-                "content": result,
-            })
-            continue
-
-        chat_history.append({
-            "role": "user",
-            "content": user_input,
-        })
-
-        try:
-            while True:
-                response = chat(
-                    model=MODEL,
-                    messages=chat_history,
-                    tools=tools,
+        print("LARVA: Conversation mode active. Speak a command.")
+        while True:
+            user_input = listen_for_command(
+                start_timeout_seconds=CONVERSATION_IDLE_TIMEOUT_SECONDS
+            )
+            if user_input is None:
+                print(
+                    "Conversation session timed out after "
+                    f"{CONVERSATION_IDLE_TIMEOUT_SECONDS} seconds."
                 )
-                chat_history.append(response.message)
-
-                if response.message.tool_calls:
-                    for tool_call in response.message.tool_calls:
-                        function_name = tool_call.function.name
-                        arguments = tool_call.function.arguments
-
-                        print(f"\n[Tool: {function_name}]")
-                        print(f"[Arguments: {arguments}]")
-
-                        if (
-                            function_name == "take_screenshot"
-                            and not screenshot_requested
-                        ):
-                            result = (
-                                "Screenshot not taken. Only explicit "
-                                "screenshot requests can trigger a capture."
-                            )
-                        elif function_name in available_functions:
-                            function_to_call = available_functions[function_name]
-                            result = function_to_call(**arguments)
-                        else:
-                            result = "Unknown tool."
-
-                        print(f"[Result: {result}]\n")
-                        chat_history.append({
-                            "role": "tool",
-                            "tool_name": function_name,
-                            "content": str(result),
-                        })
-
-                    continue
-
-                print(f"LARVA: {response.message.content}\n")
-                speak(response.message.content)
                 break
 
-        except Exception as error:
-            print(f"\nError: {error}\n")
+            if not user_input:
+                print(
+                    "No command was recognized. "
+                    "Ending the conversation session."
+                )
+                break
+
+            if not process_command(user_input):
+                return
+
+        print("LARVA: Returning to wake-word standby.")
 
 
 if __name__ == "__main__":
