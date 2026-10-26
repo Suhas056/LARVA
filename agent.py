@@ -4,15 +4,18 @@ from ollama import chat
 
 from app_launcher import APP_PATHS, detect_open_command, open_application
 from config import MODEL
+from system_tools import detect_screenshot_command, take_screenshot
 from voice import listen_for_command, wait_for_wake_word
 
 
 available_functions = {
     "open_application": open_application,
+    "take_screenshot": take_screenshot,
 }
 
 tools = [
     open_application,
+    take_screenshot,
 ]
 
 chat_history = [
@@ -22,6 +25,9 @@ chat_history = [
 You are LARVA, a local AI assistant running on Windows.
 
 You have an open_application tool.
+You also have a take_screenshot tool. Use it only for explicit requests
+to capture the user's screen. It returns a local file path; the image
+contents are not provided to you or sent to any external service.
 
 When the user asks you to open or launch an application,
 use the tool with the application name provided by the user.
@@ -61,6 +67,20 @@ def main(text_mode: bool = False) -> None:
             print("LARVA: Goodbye.")
             break
 
+        screenshot_requested = detect_screenshot_command(user_input)
+        if screenshot_requested:
+            result = take_screenshot()
+            print(f"\n[Result: {result}]\n")
+            chat_history.append({
+                "role": "user",
+                "content": user_input,
+            })
+            chat_history.append({
+                "role": "assistant",
+                "content": result,
+            })
+            continue
+
         detected_app = detect_open_command(user_input)
         if detected_app:
             print(f"\n[LARVA detected an app request: {detected_app}]")
@@ -99,7 +119,15 @@ def main(text_mode: bool = False) -> None:
                         print(f"\n[Tool: {function_name}]")
                         print(f"[Arguments: {arguments}]")
 
-                        if function_name in available_functions:
+                        if (
+                            function_name == "take_screenshot"
+                            and not screenshot_requested
+                        ):
+                            result = (
+                                "Screenshot not taken. Only explicit "
+                                "screenshot requests can trigger a capture."
+                            )
+                        elif function_name in available_functions:
                             function_to_call = available_functions[function_name]
                             result = function_to_call(**arguments)
                         else:
