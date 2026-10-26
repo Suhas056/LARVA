@@ -1,8 +1,10 @@
+import argparse
+
 from ollama import chat
 
 from app_launcher import APP_PATHS, detect_open_command, open_application
 from config import MODEL
-from voice import listen_for_command
+from voice import listen_for_command, wait_for_wake_word
 
 
 available_functions = {
@@ -33,25 +35,23 @@ If the tool cannot find an application, explain that honestly.
 ]
 
 
-def main() -> None:
+def main(text_mode: bool = False) -> None:
     print("================================")
     print("          LARVA ONLINE")
     print("================================")
     print(f"Discovered {len(APP_PATHS)} Start Menu shortcuts.")
-    print("Type 'exit' to stop.\n")
+    if text_mode:
+        print("Text mode enabled. Type 'exit' to stop.\n")
+    else:
+        print("Say 'Hey Jarvis' to give a command. Press Ctrl+C to stop.\n")
 
     while True:
-        mode = input(
-            "\nPress Enter to speak, type 't' for text, or 'exit' to quit: "
-        ).strip().lower()
-
-        if mode == "exit":
-            print("LARVA: Goodbye.")
-            break
-
-        if mode == "t":
+        if text_mode:
             user_input = input("You: ").strip()
         else:
+            if not wait_for_wake_word():
+                break
+            print("LARVA: Please speak a command.")
             user_input = listen_for_command()
 
         if not user_input:
@@ -122,4 +122,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Run the LARVA assistant.")
+    parser.add_argument(
+        "--text",
+        action="store_true",
+        help="Use keyboard input instead of always-listening voice mode.",
+    )
+    main(text_mode=parser.parse_args().text)
