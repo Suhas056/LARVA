@@ -4,6 +4,7 @@ from ollama import chat
 
 from app_launcher import APP_PATHS, detect_open_command, open_application
 from config import MODEL
+from speech_output import speak
 from system_tools import detect_screenshot_command, take_screenshot
 from voice import listen_for_command, wait_for_wake_word
 
@@ -71,6 +72,7 @@ def main(text_mode: bool = False) -> None:
         if screenshot_requested:
             result = take_screenshot()
             print(f"\n[Result: {result}]\n")
+            speak(result)
             chat_history.append({
                 "role": "user",
                 "content": user_input,
@@ -86,6 +88,7 @@ def main(text_mode: bool = False) -> None:
             print(f"\n[LARVA detected an app request: {detected_app}]")
             result = open_application(detected_app)
             print(f"[Result: {result}]\n")
+            speak(result)
 
             chat_history.append({
                 "role": "user",
@@ -143,6 +146,7 @@ def main(text_mode: bool = False) -> None:
                     continue
 
                 print(f"LARVA: {response.message.content}\n")
+                speak(response.message.content)
                 break
 
         except Exception as error:

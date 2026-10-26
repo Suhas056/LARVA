@@ -4,3 +4,4 @@ sounddevice
 SpeechRecognition
 openwakeword
 Pillow
+pyttsx3==2.98
