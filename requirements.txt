@@ -5,3 +5,4 @@ SpeechRecognition
 openwakeword
 Pillow
 pyttsx3==2.98
+ddgs==9.16.1
